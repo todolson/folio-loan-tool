@@ -54,10 +54,12 @@ def main():
 
     print(conf)
 
+    # Set up session, authenticate, and store authentication token for the session duration
     session = requests.Session()
     session.headers.update({'Content-Type': 'application/json', 'X-Okapi-Tenant': 'fs00001001'})
-
     token = authenticate(session, conf['baseurl'], conf['tenant'], conf['username'], conf['password'])
+    session.headers.update({'X-Okapi-Tenant': token})
+    
 
 if __name__ == "__main__":
     # execute only if run as a script
