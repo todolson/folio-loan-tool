@@ -93,6 +93,7 @@ def get_users(session, baseurl, max_users = 0):
     print(user_list)
     return user_list
 
+# TODO: filter for available items
 def get_items(session, baseurl, max_items = 0):
     """Retrieve set of items.
     
@@ -129,14 +130,79 @@ def get_items(session, baseurl, max_items = 0):
             break
         if max_items > 0 and max_items >= len(item_list):
             break
-    print(item_list)
     return item_list
     
+    # TODO: random sampling of lists, 
+    # TODO: random multiple loans per patron (inverse logarithm?)  
+    # TODO: maybe convert patron and item lists to dictionaries for ease of removing used items
+def generate_loans(patrons, items):
+    """Generate a list of loans to be charged out
+     
+    Attributes:
+    patrons: list of patron tuples (barcode, UUID)
+    items: list of item tuples (barcode, UUID)
+    """
+    loan_list = []
+    for user, item in zip(patrons, items):
+        loan_list.append( (user,item) )
+    return loan_list
+        
 # Yes, send a POST request to the `/circulation/loans` API endpoint to make a loan, but since it
 # only accepts UUIDs, first make requests to `/inventory/items?query=(barcode="${item-barcode}")`
 # and `/users?query=(barcode=${use-barcode})` to convert barcodes to UUIDs. I don’t know if there is
 # a plan for a higher-level API that wraps these three requests into one.
 
+def lookup_user(session, baseurl, barcode):
+    """Look up a single user by barcode
+    """
+    r = session.get(baseurl+'/users', params={'query': '(barcode='+ barcode +')'})
+    # TODO: more sensible error detection while looping over results
+    try:
+        r.raise_for_status()
+    except requests.exceptions.HTTPError:
+        #raise RequestError(r.status_code, r.text, r.url, req_headers= r.request.headers)
+        request_diagnostic(r)
+    #print(r.text)
+    return r.json()
+
+def lookup_item(session, baseurl, barcode):
+    """Look up a single item by barcode
+    """
+    r = session.get(baseurl+'/inventory/items', params={'query': '(barcode='+ barcode +')'})
+    # TODO: more sensible error detection while looping over results
+    try:
+        r.raise_for_status()
+    except requests.exceptions.HTTPError:
+        #raise RequestError(r.status_code, r.text, r.url, req_headers= r.request.headers)
+        request_diagnostic(r)
+    #print(r.text)
+    return r.json()
+
+# TODO: JIRA or discuss on practical business logic of circulation loan
+#    Want to give the loan API just small data, and not make client responsible for the metadata
+#    like titles and locations, the business logic behind the circulation API should hide that
+#    from the client. Otherwise, too cumbersome and error-prone.
+
+def make_loans(session, baseurl, loans):
+    """Charge out items
+    
+    Iterate of list, look up UUID based on barcodes. 
+    Implements expected client-side business logic without shortcut
+    
+    Atributes:
+    session:
+    loans (list): list of patron-item tuples, each of which is its own barcode-UUID tuple
+    """
+    for p, i in loans:
+        user = lookup_user(session, baseurl, p[0])
+        item = lookup_item(session, baseurl, i[0])
+        #print("User")
+        #print(user)
+        #print("Item:")
+        #print(item)
+        break
+        #r = session.get(baseurl+'/circulation/loans', params={'offset': offset, 'limit': limit})
+        pass
 
 def main():
     conf = read_config('config.ini')
@@ -153,6 +219,9 @@ def main():
     # Get items
     item_list = get_items(session, conf['baseurl'], max_items = 5)
     # Make list of loans
+    loan_list = generate_loans(user_list, item_list)
+    #print(loan_list)
+    make_loans(session, conf['baseurl'], loan_list)
     # push loans to the 
     
 
