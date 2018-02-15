@@ -15,8 +15,8 @@ def read_config(filename):
     config.read(filename)
     return config['DEFAULT']
 
-class AuthenticationError(Exception):
-    """Raised with authentication fails
+class RequestError(Exception):
+    """Raised when a request goes wrong
     Attributes:
         status_code: HTTP status code from authentication
         message: test message from server
@@ -35,14 +35,54 @@ class AuthenticationError(Exception):
 #      'http://__okapi.hostname__/authn/login
 
 def authenticate(session, baseurl, tenant, username, password):
+    """Authenticate to Okapi and get an authentication token
+    """
     r = session.post(baseurl+'/authn/login',
                      data = json.dumps({'username': username, 'password': password}))
-    print(r.status_code)
+    #print(r.status_code)
+    # TODO: Maybe get rid of AuthenticationError class 
+    r.raise_for_status()
     if r.status_code != 201:
-        raise AuthenticationError(r.status_code, r.text, r.url, req_headers= r.request.headers)
+        raise RequestError(r.status_code, r.text, r.url, req_headers= r.request.headers)
     return r.headers.get('x-okapi-token')
 
+def request_diagnostic(response):
+    print("URL: " + response.url)
+    print("Status: " + str(response.status_code))
+    print("Headers:")
+    for h, val in response.request.headers.items():
+        print(h +": " + val)
+    print("Text: " + response.text)
 
+def get_users(session, baseurl):
+    """Retrieve set of all users.
+    
+    Returns: List of tuples, barcode and UUID
+    """
+    # TOOD
+    user_list = []
+    offset = 0
+    limit = 100
+    while True:
+        r = session.get(baseurl+'/users', params={'offset': offset, 'limit': limit})
+        # TODO: more sensible error detection while looping over results
+        try:
+            r.raise_for_status()
+        except requests.exceptions.HTTPError:
+            #raise RequestError(r.status_code, r.text, r.url, req_headers= r.request.headers)
+            request_diagnostic(r)
+            break
+        #print(r.text)
+        results = r.json()
+        total_recs = results['totalRecords']
+        for u in results['users']:
+            user_list.append( (u['barcode'], u['id']) )
+        offset += limit
+        if offset > total_recs:
+            break
+    print(user_list)
+    return user_list
+    
 # Yes, send a POST request to the `/circulation/loans` API endpoint to make a loan, but since it
 # only accepts UUIDs, first make requests to `/inventory/items?query=(barcode="${item-barcode}")`
 # and `/users?query=(barcode=${use-barcode})` to convert barcodes to UUIDs. I don’t know if there is
@@ -52,13 +92,18 @@ def authenticate(session, baseurl, tenant, username, password):
 def main():
     conf = read_config('config.ini')
 
-    print(conf)
-
     # Set up session, authenticate, and store authentication token for the session duration
     session = requests.Session()
     session.headers.update({'Content-Type': 'application/json', 'X-Okapi-Tenant': 'fs00001001'})
     token = authenticate(session, conf['baseurl'], conf['tenant'], conf['username'], conf['password'])
-    session.headers.update({'X-Okapi-Tenant': token})
+    session.headers.update({'X-Okapi-Tenant': conf['tenant']})
+    session.headers.update({'X-Okapi-Token': token})
+    
+    # Get users
+    user_list = get_users(session, conf['baseurl'])
+    # Get items
+    # Make list of loans
+    # push loans to the 
     
 
 if __name__ == "__main__":
