@@ -178,6 +178,24 @@ def lookup_item(session, baseurl, barcode):
     #print(r.text)
     return r.json()
 
+# NOT trying to make proxy loans
+def loan_struct(user, item):
+    """Generate a loan that will let us make a loan.
+    
+    Build up as a Python dictionary
+    """
+    loan = {}
+    # Not adding loan Id
+    loan["userId"] = user['id']
+    loan["itemId"] = item['id']
+    loan['item'] = {
+        'title': item['title'],
+        'barcode': item['barcode'],
+        'status': {'name': "Checked Out"},
+        'location': {'name' "Main Library"}
+        }
+    return loan
+
 # TODO: JIRA or discuss on practical business logic of circulation loan
 #    Want to give the loan API just small data, and not make client responsible for the metadata
 #    like titles and locations, the business logic behind the circulation API should hide that
@@ -193,16 +211,29 @@ def make_loans(session, baseurl, loans):
     session:
     loans (list): list of patron-item tuples, each of which is its own barcode-UUID tuple
     """
+    encoder = json.JSONEncoder()
     for p, i in loans:
-        user = lookup_user(session, baseurl, p[0])
-        item = lookup_item(session, baseurl, i[0])
-        #print("User")
-        #print(user)
-        #print("Item:")
-        #print(item)
+        user = lookup_user(session, baseurl, p[0])['users'][0]
+        item = lookup_item(session, baseurl, i[0])['items'][0]
+        print("User")
+        print(user)
+        print("Item:")
+        print(item)
+        loan = encoder.encode(loan_struct(user, item))
+        print("Loan:")
+        print(loan)
+        r = session.post(baseurl+'/circulation/loans',
+                         data = loan)
+        try:
+            r.raise_for_status()
+        except requests.exceptions.HTTPError:
+            #raise RequestError(r.status_code, r.text, r.url, req_headers= r.request.headers)
+            request_diagnostic(r)
+            break
+        #print(r.text)
+        request_diagnostic(r)
         break
-        #r = session.get(baseurl+'/circulation/loans', params={'offset': offset, 'limit': limit})
-        pass
+    pass
 
 def main():
     conf = read_config('config.ini')
