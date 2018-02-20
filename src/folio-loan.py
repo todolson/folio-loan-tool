@@ -1,6 +1,7 @@
 #/bin/env PYTHON3
 
 import configparser
+import datetime
 import json
 import requests
 
@@ -112,7 +113,11 @@ def get_items(session, baseurl, max_items = 0):
     if max_items > 0 and max_items < limit:
         limit = max_items
     while True:
-        r = session.get(baseurl+'/inventory/items', params={'offset': offset, 'limit': limit})
+        # Only returns items with status of "Available"
+        r = session.get(
+                baseurl+'/inventory/items',
+                params={'offset': offset, 'limit': limit, 'query': '(status={"name": "Available"})'}
+            )
         # TODO: more sensible error detection while looping over results
         try:
             r.raise_for_status()
@@ -131,7 +136,7 @@ def get_items(session, baseurl, max_items = 0):
         if max_items > 0 and max_items >= len(item_list):
             break
     return item_list
-    
+
     # TODO: random sampling of lists, 
     # TODO: random multiple loans per patron (inverse logarithm?)  
     # TODO: maybe convert patron and item lists to dictionaries for ease of removing used items
@@ -188,12 +193,8 @@ def loan_struct(user, item):
     # Not adding loan Id
     loan["userId"] = user['id']
     loan["itemId"] = item['id']
-    loan['item'] = {
-        'title': item['title'],
-        'barcode': item['barcode'],
-        'status': {'name': "Checked Out"},
-        'location': {'name' "Main Library"}
-        }
+    loan["loanDate"] = datetime.datetime.now().isoformat()
+    loan['action'] = 'checkedout'
     return loan
 
 # TODO: JIRA or discuss on practical business logic of circulation loan
@@ -232,7 +233,6 @@ def make_loans(session, baseurl, loans):
             break
         #print(r.text)
         request_diagnostic(r)
-        break
     pass
 
 def main():
