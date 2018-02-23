@@ -220,16 +220,16 @@ def make_loans(session, okapi, loans):
         loan = encoder.encode(loan_struct(user, item))
         print("Loan:")
         print(loan)
-        # r = session.post(okapi+'/circulation/loans',
-        #                  data = loan)
-        # try:
-        #     r.raise_for_status()
-        # except requests.exceptions.HTTPError:
-        #     #raise RequestError(r.status_code, r.text, r.url, req_headers= r.request.headers)
-        #     request_diagnostic(r)
-        #     break
-        # #print(r.text)
-        # request_diagnostic(r)
+        r = session.post(okapi+'/circulation/loans',
+                         data = loan)
+        try:
+            r.raise_for_status()
+        except requests.exceptions.HTTPError:
+            #raise RequestError(r.status_code, r.text, r.url, req_headers= r.request.headers)
+            request_diagnostic(r)
+            break
+        #print(r.text)
+        request_diagnostic(r)
     pass
 
 def main():
