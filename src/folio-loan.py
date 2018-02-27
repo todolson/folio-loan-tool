@@ -4,12 +4,6 @@ import configparser
 import datetime
 import json
 import requests
-
-class Config:
-    username=''
-    password=''
-    baseurl=''
-    tenant=''
     
 def read_config(filename):
     config = configparser.ConfigParser()
@@ -35,10 +29,10 @@ class RequestError(Exception):
 #      -d '{"username" : "admin", "password" : "folio4UChi" }' 
 #      'https://okapi-snd-us-east-1.folio.ebsco.com/authn/login
 
-def authenticate(session, baseurl, tenant, username, password):
+def authenticate(session, okapi, tenant, username, password):
     """Authenticate to Okapi and get an authentication token
     """
-    r = session.post(baseurl+'/authn/login',
+    r = session.post(okapi+'/authn/login',
                      data = json.dumps({'username': username, 'password': password}))
     #print(r.status_code)
     # TODO: Maybe get rid of AuthenticationError class 
@@ -55,12 +49,12 @@ def request_diagnostic(response):
         print(h +": " + val)
     print("Text: " + response.text)
 
-def get_users(session, baseurl, max_users = 0):
+def get_users(session, okapi, max_users = 0, usergroup='11111111*'):
     """Retrieve set of all users.
     
      Attributes:
         session: session object, with session headers set
-        baseurl: base URL for Okapi
+        okapi: base URL for Okapi
         max_users (opt): maximum number of users to retrieve, 0 for retrieve all
    
     Returns: List of tuples, barcode and UUID
@@ -73,7 +67,10 @@ def get_users(session, baseurl, max_users = 0):
     if max_users > 0 and max_users < limit:
         limit = max_users
     while True:
-        r = session.get(baseurl+'/users', params={'offset': offset, 'limit': limit})
+        r = session.get(
+            okapi+'/users',
+            params={'offset': offset, 'limit': limit, 'query': '(patronGroup=' + usergroup + ')'}
+        )
         # TODO: more sensible error detection while looping over results
         try:
             r.raise_for_status()
@@ -95,12 +92,12 @@ def get_users(session, baseurl, max_users = 0):
     return user_list
 
 # TODO: filter for available items
-def get_items(session, baseurl, max_items = 0):
+def get_items(session, okapi, max_items = 0):
     """Retrieve set of items.
     
      Attributes:
         session: session object, with session headers set
-        baseurl: base URL for Okapi
+        okapi: base URL for Okapi
         max_items (opt): maximum number of items to retrieve, 0 for retrieve all
    
     Returns: List of tuples, barcode and UUID
@@ -115,7 +112,7 @@ def get_items(session, baseurl, max_items = 0):
     while True:
         # Only returns items with status of "Available"
         r = session.get(
-                baseurl+'/inventory/items',
+                okapi+'/inventory/items',
                 params={'offset': offset, 'limit': limit, 'query': '(status={"name": "Available"})'}
             )
         # TODO: more sensible error detection while looping over results
@@ -157,10 +154,10 @@ def generate_loans(patrons, items):
 # and `/users?query=(barcode=${use-barcode})` to convert barcodes to UUIDs. I don’t know if there is
 # a plan for a higher-level API that wraps these three requests into one.
 
-def lookup_user(session, baseurl, barcode):
+def lookup_user(session, okapi, barcode):
     """Look up a single user by barcode
     """
-    r = session.get(baseurl+'/users', params={'query': '(barcode='+ barcode +')'})
+    r = session.get(okapi+'/users', params={'query': '(barcode='+ barcode +')'})
     # TODO: more sensible error detection while looping over results
     try:
         r.raise_for_status()
@@ -170,10 +167,10 @@ def lookup_user(session, baseurl, barcode):
     #print(r.text)
     return r.json()
 
-def lookup_item(session, baseurl, barcode):
+def lookup_item(session, okapi, barcode):
     """Look up a single item by barcode
     """
-    r = session.get(baseurl+'/inventory/items', params={'query': '(barcode='+ barcode +')'})
+    r = session.get(okapi+'/inventory/items', params={'query': '(barcode='+ barcode +')'})
     # TODO: more sensible error detection while looping over results
     try:
         r.raise_for_status()
@@ -202,7 +199,7 @@ def loan_struct(user, item):
 #    like titles and locations, the business logic behind the circulation API should hide that
 #    from the client. Otherwise, too cumbersome and error-prone.
 
-def make_loans(session, baseurl, loans):
+def make_loans(session, okapi, loans):
     """Charge out items
     
     Iterate of list, look up UUID based on barcodes. 
@@ -214,8 +211,8 @@ def make_loans(session, baseurl, loans):
     """
     encoder = json.JSONEncoder()
     for p, i in loans:
-        user = lookup_user(session, baseurl, p[0])['users'][0]
-        item = lookup_item(session, baseurl, i[0])['items'][0]
+        user = lookup_user(session, okapi, p[0])['users'][0]
+        item = lookup_item(session, okapi, i[0])['items'][0]
         print("User")
         print(user)
         print("Item:")
@@ -223,7 +220,7 @@ def make_loans(session, baseurl, loans):
         loan = encoder.encode(loan_struct(user, item))
         print("Loan:")
         print(loan)
-        r = session.post(baseurl+'/circulation/loans',
+        r = session.post(okapi+'/circulation/loans',
                          data = loan)
         try:
             r.raise_for_status()
@@ -241,18 +238,18 @@ def main():
     # Set up session, authenticate, and store authentication token for the session duration
     session = requests.Session()
     session.headers.update({'Content-Type': 'application/json', 'X-Okapi-Tenant': 'fs00001001'})
-    token = authenticate(session, conf['baseurl'], conf['tenant'], conf['username'], conf['password'])
+    token = authenticate(session, conf['okapi'], conf['tenant'], conf['username'], conf['password'])
     session.headers.update({'X-Okapi-Tenant': conf['tenant']})
     session.headers.update({'X-Okapi-Token': token})
     
     # Get users
-    user_list = get_users(session, conf['baseurl'], max_users = 5)
+    user_list = get_users(session, conf['okapi'], max_users=10, usergroup=conf['librarians'])
     # Get items
-    item_list = get_items(session, conf['baseurl'], max_items = 5)
+    item_list = get_items(session, conf['okapi'], max_items=10)
     # Make list of loans
     loan_list = generate_loans(user_list, item_list)
     #print(loan_list)
-    make_loans(session, conf['baseurl'], loan_list)
+    make_loans(session, conf['okapi'], loan_list)
     # push loans to the 
     
 
