@@ -23,12 +23,6 @@ class RequestError(Exception):
         self.message = message
         self.url = url
 
-# curl -i -w "\n" -X POST -
-#       H "Content-Type:application/json" \
-#      -H "X-Okapi-Tenant:__tenant_name__" 
-#      -d '{"username" : "XX_user_XX", "password" : "XX_password_XX" }' 
-#      'http://__okapi.hostname__/authn/login
-
 def authenticate(session, okapi, tenant, username, password):
     """Authenticate to Okapi and get an authentication token
     """
